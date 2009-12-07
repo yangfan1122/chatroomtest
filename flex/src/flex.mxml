@@ -72,7 +72,7 @@
 				switch (event.info.code)
 				{
 					case "NetConnection.Connect.Success":
-						txt.text="连接成功~";
+						txt.text="连接成功";
 						coBtn.enabled=false;
 						closeBtn.enabled=true;
 						sendBtn.enabled=true;
