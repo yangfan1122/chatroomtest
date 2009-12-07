@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml"
+				layout="absolute"
+				width="600"
+				height="380"
+				creationComplete="init()">
+
+	<mx:Style>
+        .txt{
+        	fontFamily:Arial;
+        	fontSize:12pt;
+        }
+    </mx:Style>
+
+	<mx:Script>
+		<![CDATA[
+			import flash.net.*;
+			import flash.events.*;
+			import flash.display.*;
+			import flash.text.TextField;
+			import flash.external.ExternalInterface;
+			import mx.controls.Alert;
+			import mx.controls.TextArea;
+
+			[Bindable]
+			private var userArr:Array;
+
+			private var nc:NetConnection;
+			private var listSO:SharedObject;
+			private var msgSO:SharedObject;
+			private var now:Date=new Date();
+			private var everyBody:String="Everybody";
+			//private var path:String="rtmp://172.20.204.40/chatApp";
+			private var path:String="rtmp://172.16.9.127/chatApp";
+
+			private function init():void
+			{	
+				testTxt.htmlText = "<font color='#ff0000'>input red5 server :</font>";
+				server.text = path;
+							
+				sendBtn.enabled=false;
+				closeBtn.enabled=false;
+				history.editable=false;
+				txt.text="disconnect";
+
+				coBtn.addEventListener(MouseEvent.CLICK, connect);
+				sendBtn.addEventListener(MouseEvent.CLICK, sendBtnHandler);
+				closeBtn.addEventListener(MouseEvent.CLICK, closeBtnHandler);
+			}
+
+			//connect
+			private function connect(event:MouseEvent):void
+			{
+				if (userName.text != "")
+				{
+					//Alert.show("server.text : "+server.text);
+					nc=new NetConnection();
+					nc.connect(server.text, userName.text);
+					nc.client=this;
+					nc.addEventListener(NetStatusEvent.NET_STATUS, netStatusHandler);
+					
+				}
+				else
+				{
+					txt.text="请先输入您的名字！";
+				}
+
+			}
+
+			private function netStatusHandler(event:NetStatusEvent):void
+			{
+				switch (event.info.code)
+				{
+					case "NetConnection.Connect.Success":
+						txt.text="连接成功~";
+						coBtn.enabled=false;
+						closeBtn.enabled=true;
+						sendBtn.enabled=true;
+						server.enabled=false;
+						setListSO();
+						setMsgSO();
+						break;
+					case "NetConnection.Connect.Rejected":
+						txt.text="连接被拒绝";
+						break;
+					case "NetConnection.Connect.Failed":
+						txt.text="连接失败";
+						break;
+					case "NetConnection.Connect.Closed":
+						txt.text="连接关闭";
+						break;
+				}
+
+			}
+
+			public function returnConnect(str:String):void
+			{
+				history.text=str;
+			}
+
+			private function closeBtnHandler(event:MouseEvent):void
+			{
+				nc.close();
+				cleanAll();
+			}
+
+			private function cleanAll():void
+			{
+				coBtn.enabled=true;
+				closeBtn.enabled=false;
+				sendBtn.enabled=false;
+				server.enabled=true;
+				userName.text="";
+				history.text="";
+				input.text="";
+				userArr=new Array();
+			}
+
+			// //connect
+
+			//user list
+			private function setListSO():void
+			{
+				listSO=SharedObject.getRemote("listSO", nc.uri, false);
+				listSO.connect(nc);
+				listSO.addEventListener(SyncEvent.SYNC, listSOSyncHandler);
+			}
+
+			private function listSOSyncHandler(event:SyncEvent):void
+			{ //对服务器端listSO对象监听，该对象更新后执行。
+				showUserList();
+				//toName.addEventListener(MouseEvent.DOUBLE_CLICK, _updateVideoShow);
+			}
+
+			private function showUserList():void
+			{
+				userArr=new Array();
+				userArr.push(everyBody);
+				for (var tmp:String in listSO.data)
+				{
+					userArr.push(listSO.data[tmp]); //已连接的第tmp个用户
+				}
+				toName.selectedIndex=userArr[0];
+			}
+
+			// //user list
+
+			//消息共享对象
+			private function setMsgSO():void
+			{
+				msgSO=SharedObject.getRemote("msgSO", nc.uri, false);
+				msgSO.addEventListener(SyncEvent.SYNC, msgSOSyncHandler);
+				msgSO.connect(nc);
+			}
+
+			private function msgSOSyncHandler(event:SyncEvent):void
+			{ //对服务器端msgSO对象监听，该对象更新后执行。
+				//更新聊天内容
+				for (var i:String in msgSO.data)
+				{
+					history.htmlText+=msgSO.data[i];
+				}
+				scrollToEnd();
+			}
+
+			// //消息共享对象
+
+			//send message
+			private function sendBtnHandler(event:MouseEvent):void
+			{
+
+				var tempTxt:String
+				tempTxt="<font color='#0000ff'>" + userName.text + "</font>" + " 对 " + "<font color='#0000ff'>" + toName.text + "</font>" + " 说 " + "(" + getTime() + ")" + ":" + "\t" + input.text + "\n";
+				if (input.text == "")
+				{
+					alert.text="先填写消息！";
+				}
+				else if (toName.text == everyBody)
+				{
+					alert.text="";
+					nc.call("broadcastUserMsg", null, tempTxt);
+					input.text="";
+				}
+				else if (toName.text == userName.text)
+				{
+					alert.text="请选择其他人聊天!";
+				}
+				else
+				{
+					alert.text="";
+					nc.call("msgFromPrivate", null, tempTxt, userName.text, toName.text);
+					input.text="";
+				}
+			}
+
+			private function getTime():String
+			{
+				var time:String="<font color='#666666'>" + now.getHours() + ":" + (now.getMinutes() < 10 ? "0" + now.getMinutes() : now.getMinutes()) + ":" + (now.getSeconds() < 10 ? "0" + now.getSeconds() : now.getSeconds()) + "</font>";
+				return time;
+			}
+
+			public function showMsgByPrivate(str:String):void//私聊 供服务器端调用
+			{
+				history.htmlText+=str;
+				scrollToEnd();
+			}
+
+			private function scrollToEnd():void
+			{	
+				history.validateNow();		
+				history.verticalScrollPosition = history.maxVerticalScrollPosition;
+			}
+		]]>
+	</mx:Script>
+
+	<mx:Canvas>
+
+		<mx:Label text="对象 : "
+				  x="21"
+				  y="61"
+				  styleName="txt"/>
+		<mx:Label x="21"
+				  y="16"
+				  text="名字 : "
+				  styleName="txt"/>
+		<mx:TextInput id="userName"
+					  x="59"
+					  y="14"
+					  maxChars="18"/>
+
+		<mx:Button id="coBtn"
+				   width="80"
+				   x="229"
+				   y="14"
+				   label="Connect" />
+		<mx:Button id="closeBtn"
+				   width="80"
+				   x="317"
+				   y="14"
+				   label="Close"/>
+		<mx:Label x="421"
+				  y="16"
+				  text="状态 : "
+				  styleName="txt"/>
+		<mx:Label id="txt"
+				  x="459"
+				  y="16"
+				  text=""
+				  styleName="txt"/>
+
+		<mx:ComboBox id="toName"
+					 x="60"
+					 y="59"
+					 width="160">
+			<mx:dataProvider>
+				{userArr}
+			</mx:dataProvider>
+		</mx:ComboBox>
+
+		<mx:TextArea id="history"
+					 x="21"
+					 y="108"
+					 width="552"
+					 height="187"/>
+
+		<mx:TextInput id="input"
+					  x="21"
+					  y="317"
+					  width="460"/>
+
+		<mx:Button id="sendBtn"
+				   width="80"
+				   x="492"
+				   y="317"
+				   label="Send"/>
+
+		<mx:Label id="alert"
+				  x="244"
+				  y="61"
+				  text=""
+				  styleName="txt"/>
+	</mx:Canvas>
+	<mx:Label id="testTxt" x="21" y="345" text="" /><mx:TextInput id="server" width="350" x="130" y="345" text="" />
+</mx:Application>
