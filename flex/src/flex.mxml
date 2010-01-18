@@ -14,11 +14,13 @@
 
 	<mx:Script>
 		<![CDATA[
+			/*
 			import flash.net.*;
 			import flash.events.*;
 			import flash.display.*;
 			import flash.text.TextField;
 			import flash.external.ExternalInterface;
+			*/
 			import mx.controls.Alert;
 			import mx.controls.TextArea;
 
